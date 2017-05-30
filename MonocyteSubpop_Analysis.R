@@ -1,15 +1,9 @@
 library(dplyr)
-
+library(tidyr)
 
 expMatrix <- read.table("Monocyte.txt",sep="\t")
 
-
-
 expMatrixMonocytes <- expMatrix[,grep("Mono", colnames(expMatrix) )]
-
-expMatrixMonocytesSubset <- expMatrixMonocytes[c(1:2000),]
-
-expMatrixMonocytesSubset2 <- expMatrixMonocytes[c(1:2000),]
 
 filterList <- read.table("ToFilter.txt")
 
@@ -17,9 +11,33 @@ t <- which(colnames(expMatrixMonocytes) %in% filterList)
 
 expMatrixMonocytes <- expMatrixMonocytes[,which(!(colnames(expMatrixMonocytes) %in% filterList[,1]))]
 
-expMatrixClassical <- expMatrixMonocytes[,grep("classical", colnames(expMatrixMonocytes))]
+#expMatrixClassical <- expMatrixMonocytes[,grep("nonclassical{0}", colnames(expMatrixMonocytes))]
 
-expMatrixNonClassical <- expMatrixMonocytes[,grep("nonclassical", colnames(expMatrixMonocytes))]
+expMatrixMonocytesNoInter <-  expMatrixMonocytes[,grep("classical", colnames(expMatrixMonocytes))]
+temp_index_nonclassical <- grep("nonclassical",colnames(expMatrixMonocytesNoInter))
+
+expMatrixNonClassical <- expMatrixMonocytesNoInter[temp_index_nonclassical]
+
+expMatrixClassical <- expMatrixMonocytesNoInter[-temp_index_nonclassical]
+
+classicalID <- as.data.frame(colnames(expMatrixClassical))
+
+classicalID <- classicalID %>%
+              mutate(group="Classical")  #%>%
+             # mutate(group_color="red")
+
+colnames(classicalID) <- c("Sample","Group")
+
+nonclassicalID <- as.data.frame(colnames(expMatrixNonClassical))
+
+nonclassicalID <- nonclassicalID %>%
+            mutate(group="Non-classical")  #%>%
+           # mutate(group_color="blue")
+
+
+colnames(nonclassicalID) <- c("Sample","Group")
+
+IDlist <- bind_rows(classicalID,nonclassicalID)
 
 expComparison <- cbind(expMatrixClassical,expMatrixNonClassical)
 
@@ -44,6 +62,8 @@ expFilteredSet <- exp %>%
                 filter(expDiff > 500 | expDiff < -500)
 
 expMatrixFiltered <- expComparison[which(rownames(expMatrix) %in% expFilteredSet[,1]),]
+
+print(colnames(expMatrixFiltered))
 
 targetsNur77HomoSapiens <- read.table("Nur77Targets.txt",sep=",",stringsAsFactors=FALSE)
 targetsNur77MusMusculus <- read.table("Nur77GenesMusMusculus.txt",sep=",",stringsAsFactors=FALSE)
@@ -109,9 +129,11 @@ rownames(expDiffMus) <- expDiffMus[,1]
 expDiffMusFilteredSet <- expDiffMus %>%
   filter(expDiffMus > 100000 | expDiffMus < -100000)
 
-
-
 expMusSetFiltered <- mouseRNAseqData[which(rownames(expDiffMus) %in% expDiffMusFilteredSet[,1]),]
+
+
+con<-file("expMusToFixNames.csv",encoding="UTF-8")
+write.table(expMusSetFiltered,file=con,row.names = TRUE,sep=",",quote=FALSE)
 
 
 expNur77MusTarget <- mouseRNAseqGeneName[which(rownames(expDiffMus) %in% targetsGeneMouse),]
@@ -120,9 +142,9 @@ expNur77MusTarget <- mouseRNAseqGeneName[which(rownames(expDiffMus) %in% targets
 con<-file("expMusMusculusFilt100000.csv",encoding="UTF-8")
 write.table(expMusSetFiltered,file=con,row.names = FALSE,sep=",",quote=FALSE)
 
-
 con<-file("expMatrix.csv",encoding="UTF-8")
-write.csv(expMatrixFiltered,file=con,row.names = TRUE)
+write.table(expMatrixFiltered,file=con,row.names = TRUE,sep=",",quote=FALSE)
+
 
 con<-file("MonocyteComparison.csv",encoding="UTF-8")
 write.csv(expFilteredSet,file=con,row.names = TRUE)
@@ -140,11 +162,43 @@ con<-file("Nur77Set.csv",encoding="UTF-8")
 write.csv(expNur77Target,file=con,row.names = TRUE)
 
 con<-file("Nur77SpeciesOverlapSet.csv",encoding="UTF-8")
-write.csv(expOverlap,file=con,row.names = TRUE)
+write.table(expOverlap,file=con,sep=",",quote=FALSE,row.names = TRUE,col.names=TRUE)
+
+con<-file("SingleCellRNAgroups.csv",encoding="UTF-8")
+write.table(IDlist,file=con,sep=",",quote=FALSE,row.names = FALSE,col.names=TRUE)
 
 con<-file("Nur77SpeciesOverlapFiltered10.csv",encoding="UTF-8")
-write.csv(expOverlapSetFiltered,file=con,row.names = TRUE)
-
+wwrite.table(expOverlapSetFiltered,file=con,sep=",",quote=FALSE,row.names = TRUE,col.names=TRUE)
 
 con<-file("Nur77GeneSpeciesComparison.csv",encoding="UTF-8")
 write.table(targetsComparison,file=con,sep=",",quote=FALSE,row.names = FALSE,col.names=FALSE)
+
+#Export overarching gene list
+
+genesOverall <- rownames(expMatrixFiltered)
+print(genesOverall)
+
+expFilteredPantherAnnot <- read.table("pantherGeneList.txt",sep="\t")
+
+mapGeneNametoID <- expFilteredPantherAnnot[,c(2,1)]
+colnames(mapGeneNametoID) <- c("GeneName","ID")
+expFilterdPantherPathway <- read.table("pantherGeneListCategories.txt", sep="\t")
+
+geneNameToPathway <- expFilterdPantherPathway[,c(3,2)]
+
+geneNameToPathwayHash <- tidyr::separate_rows(geneNameToPathway,V2,sep=",")
+
+geneNameToPathwayHash <- geneNameToPathwayHash[,c(2,1)]
+colnames(geneNameToPathwayHash) <- c("ID","Pathway")
+
+PathwayToColor <- as.data.frame(unique(geneNameToPathwayHash[,2]),stringsAsFactors=FALSE)
+
+
+                         
+con<-file("GeneList.csv",encoding="UTF-8")
+write.table(genesOverall,file=con,sep=",",quote=FALSE,row.names = FALSE,col.names=FALSE)
+
+con<-file("geneToID.csv",encoding="UTF-8")
+write.table(mapGeneNametoID,file=con,sep=",",quote=FALSE,row.names = FALSE,col.names=TRUE)
+con<-file("IDtoPathway.csv",encoding="UTF-8")
+write.table(geneNameToPathwayHash,file=con,sep=",",quote=FALSE,row.names = FALSE,col.names=TRUE)
